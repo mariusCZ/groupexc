@@ -96,7 +96,6 @@ int main(void)
     Error_Handler();
   }
 
-  //systickInit(1000);
   BSP_PB_Init(BUTTON_USER, BUTTON_MODE_EXTI);
 
   /* Enable USB power on Pwrctrl CR2 register */
@@ -106,19 +105,9 @@ int main(void)
   BSP_TSENSOR_Init();
   BSP_PSENSOR_Init();
 
-  /*##-1- Link the USB Host disk I/O driver ##################################*/
-  if(FATFS_LinkDriver(&USBH_Driver, USBDISKPath) == 0)
+  if(USBinit() == 0)
   {
-    /*##-2- Init Host Library ################################################*/
-    USBH_Init(&hUSBHost, USBH_UserProcess, 0);
 
-    /*##-3- Add Supported Class ##############################################*/
-    USBH_RegisterClass(&hUSBHost, USBH_MSC_CLASS);
-
-    /*##-4- Start Host Process ###############################################*/
-    USBH_Start(&hUSBHost);
-
-    /*##-5- Run Application (Blocking mode) ##################################*/
     while (1)
     {
       /* USB Host Background task */
@@ -141,6 +130,22 @@ int main(void)
 
   /* Infinite loop */
   for(;;);
+}
+
+uint8_t USBinit() {
+	/*##-1- Link the USB Host disk I/O driver ##################################*/
+	uint8_t ret = FATFS_LinkDriver(&USBH_Driver, USBDISKPath);
+
+	/*##-2- Init Host Library ################################################*/
+	USBH_Init(&hUSBHost, USBH_UserProcess, 0);
+
+	/*##-3- Add Supported Class ##############################################*/
+	USBH_RegisterClass(&hUSBHost, USBH_MSC_CLASS);
+
+	/*##-4- Start Host Process ###############################################*/
+	USBH_Start(&hUSBHost);
+
+	return ret;
 }
 
 void stateMachine() {
