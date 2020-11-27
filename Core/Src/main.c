@@ -28,10 +28,11 @@
 #include "stm_tsensor.h"
 #include "stm_psensor.h"
 #include "magdriver.h"
-#include "i2cdriver.h"
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
+#define READCNT 10
+#define BUFFER_SIZE 300
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
 FATFS USBDISKFatFs;           /* File system object for USB disk logical drive */
@@ -110,7 +111,7 @@ int main(void)
 
   /* Initialize register values */
   struct Regs regs;
-  regs.reg1 = LIS3MDL_MAG_TEMPSENSOR_DISABLE | LIS3MDL_MAG_OM_XY_HIGH | LIS3MDL_MAG_ODR_40_HZ;
+  regs.reg1 = LIS3MDL_MAG_TEMPSENSOR_DISABLE | LIS3MDL_MAG_OM_XY_HIGH | LIS3MDL_MAG_ODR_80_HZ;
   regs.reg2 = LIS3MDL_MAG_FS_4_GA | LIS3MDL_MAG_REBOOT_DEFAULT | LIS3MDL_MAG_SOFT_RESET_DEFAULT;
   regs.reg3 = LIS3MDL_MAG_CONFIG_NORMAL_MODE | LIS3MDL_MAG_CONTINUOUS_MODE;
   regs.reg4 = LIS3MDL_MAG_OM_Z_HIGH | LIS3MDL_MAG_BLE_LSB;
@@ -122,24 +123,29 @@ int main(void)
   /* Read the magnetometer ID */
   uint8_t mID = MAGNET_ReadID();
   /* Check whether the ID is correct */
-  if (mID == 61) printf("ID correct, sensor communications operational.\r\n");
+  if (mID == 61) printf("ID correct, sensor communications operational.\n");
   else {
-	printf("ID incorrect, sensor communication non-functional.\r\n");
+	printf("ID incorrect, sensor communication non-functional.\n");
 	while (1) {}
   }
 
+  /* Intialize the workspace sensors */
   BSP_HSENSOR_Init();
   BSP_TSENSOR_Init();
   BSP_PSENSOR_Init();
 
+  /* Check if program used with or without USB OTG */
+  /* This is only available if ENABLE_WITHOUT_USB is set to 1 in main.h */
   uint8_t c = 0;
   if (ENABLE_WITHOUT_USB) {
-	  printf("Press y if you would like to run without USB\r\n");
+	  printf("Press y if you would like to run without USB\n");
 	  HAL_UART_Receive(&UartHandle, (uint8_t *)&c, 1, 0xFFFF);
 	  if (c == 'y' || c == 'Y')
+		  /* Run state machine without USB OTG */
 		  while(1) {stateMachine(0);}
   }
 
+  /* Initialize the USB and run the USB state machine */
   if(USBinit() == 0)
   {
     while (1)
@@ -151,6 +157,7 @@ int main(void)
       switch(Appli_state)
       {
       case APPLICATION_START:
+    	/* Start state machine with USB OTG */
         stateMachine(1);
         Appli_state = APPLICATION_IDLE;
         break;
@@ -184,13 +191,13 @@ uint8_t USBinit() {
 
 void stateMachine(uint8_t uflag) {
 	static uint16_t s = 0, min = 0;
+	/* The state machine's input */
 	static uint8_t input = 0;
-	if (input) s++;
-	if (s >= 60) min++;
+	/* File name where data will be stored */
 	const char filename[] = "datalog.txt";
 
+	/* If running with USB OTG, mount file system and create file */
 	if (uflag) {
-		printf("Starting write\r\n");
 		/* Register the file system object to the FatFs module */
 		if(f_mount(&USBDISKFatFs, (TCHAR const*)USBDISKPath, 0) != FR_OK)
 		{
@@ -202,41 +209,48 @@ void stateMachine(uint8_t uflag) {
 			/* Create and Open a new text file object with write access */
 			if(f_open(&MyFile, filename, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
 			{
-			  /* 'STM32.TXT' file Open for write Error */
+			  /* file Open for write Error */
 			  Error_Handler();
 			}
+			/* Close file */
 			f_close(&MyFile);
 		}
 	}
 
+	uwTick = 0;
 	while(1) {
+		/* If User button pressed, quit state machine */
 		if (BSP_PB_GetState(BUTTON_USER) == GPIO_PIN_RESET) break;
+		/* Check if uwTick, which is a variable that is incremented each millisecond
+		 * by the system clock, is equal to a second, if so, set the input high.
+		 */
 		if (uwTick >= 1000) {
 			input = 1;
 			s++;
 			uwTick = 0;
+			/* Keep track of seconds and minutes passed */
 			if (s >= 60) {
 				s = 0;
 				min++;
 			}
 		}
+		/* State machine's switch statement */
 		switch(MachineState) {
 		case STATE_IDLE:
-			//printf("Idle state\r\n");
 			if (input) {
 				MachineState = STATE_READING;
-				printf("Moving from idle \r\n");
 			}
 			else stateOperations(0,0,uflag);
 			break;
 
 		case STATE_READING:
-			printf("Reading state\r\n");
+			printf("Reading state\n");
 			input = 0;
+			/* If working with USB OTG, open the file for appending */
 			if(uflag) {
 				if(f_open(&MyFile, filename, FA_OPEN_APPEND | FA_WRITE) != FR_OK)
 				{
-					/* 'STM32.TXT' file Open for write Error */
+					/* file Open for write Error */
 					Error_Handler();
 				}
 			}
@@ -248,23 +262,24 @@ void stateMachine(uint8_t uflag) {
 			break;
 
 		case STATE_DATAMANAGE:
-			printf("Data state\r\n");
+			printf("Data state\n");
 			if (input) MachineState = STATE_ERROR;
 			else {
+				/* Pass the time variables to state operations */
 				stateOperations(min,s,uflag);
 				MachineState = STATE_STORING;
 			}
 			break;
 
 		case STATE_STORING:
-			printf("Storing state\r\n");
+			printf("Storing state\n");
 			stateOperations(0,0,uflag);
 			if (input) MachineState = STATE_READING;
 			else MachineState = STATE_IDLE;
 			break;
 
 		case STATE_ERROR:
-			printf("Error state\r\n");
+			printf("Error state\n");
 			stateOperations(0,0,uflag);
 			if (!input) MachineState = STATE_STORING;
 			break;
@@ -274,30 +289,36 @@ void stateMachine(uint8_t uflag) {
 		}
 	}
 	printf("Done writing\r\n");
-	/* Unlink the USB disk I/O driver */
+	/* Unlink the USB disk I/O driver once state machine is done */
 	FATFS_UnLinkDriver(USBDISKPath);
 }
 
+
 void stateOperations(uint16_t min, uint16_t s, uint8_t uflag) {
+	/* This function is a supplement of the state machine, since this is where
+	 * all the operations that are done in the different states are stored.
+	 */
 	static float sensors[3];
 	static uint8_t text[][30] = {"Temperature: ", "Humidity: ", "Pressure: "};
-	static int16_t magsensbuf[20][3], magsens[3];
+	static int16_t magsensbuf[READCNT][3], magsens[3];
 	uint32_t byteswritten;
 	FRESULT res;
-	static char buf[200] = {0}, bufmag[100] = {0};
+	static char buf[BUFFER_SIZE] = {0};
 
+	/* State machine switch */
 	switch (MachineState) {
 	case STATE_IDLE:
 		break;
 	case STATE_READING:
+		/* Read the three workspace sensors */
 		sensors[0] = BSP_TSENSOR_ReadTemp();
 		sensors[1] = BSP_HSENSOR_ReadHumidity();
 		sensors[2] = BSP_PSENSOR_ReadPressure();
 		uint8_t magCnt = 0;
-		while (magCnt <= 20) {
+		/* Read set amount of magnetometer sensor */
+		while (magCnt <= READCNT) {
 			if (MAGNET_DataCheck()) {
 				  /* Read the data */
-				  //if (magINT) printf("Interrupt and data check synchronous \r\n");
 				  MAGNET_ReadXYZ(magsensbuf[magCnt]);
 				  magCnt++;
 			}
@@ -305,38 +326,41 @@ void stateOperations(uint16_t min, uint16_t s, uint8_t uflag) {
 		break;
 	case STATE_DATAMANAGE:
 	{
-		/* WEIGHTED AVERAGE SECTION */
-		uint8_t weights[20][3] = {{1}};
-		for (int i = 0; i < 3; i++) {
-			for (int j = 0; j < 20; j++) {
-				for (int k = 0; k < 20; k++){
-					if (magsensbuf[j][i] == magsensbuf[k][i]) weights[j][i] += 1;
-				}
-			}
-		}
-
+		/* AVERAGE SECTION
+		 * A simple arithmetic mean is done to
+		 * reduce noise in the magnetometer sensor */
 		for (int i = 0; i < 3; i++) {
 			int16_t average = 0;
-			for (int j = 0; j < 20; j++) {
-				average += magsensbuf[j][i] * weights[j][i];
+			for (int j = 0; j < READCNT; j++) {
+				average += magsensbuf[j][i];
 			}
-			average = average / 20;
+			average = average / READCNT;
 			magsens[i] = average;
 		}
-		/* WEIGHTED AVERAGE SECTION END */
+		/* AVERAGE SECTION END */
 
-		/* SINGLE READ SENSOR SECTION */
+		/* SINGLE READ SENSOR SECTION
+		 * This section creates char array that stores all the names
+		 * and the values of the sensors for writing to the USB flash drive. */
 		uint8_t count = 0, lastcnt = 0;
 		for (int i = 0; i < 3; i++) {
+			/* Buffer arrays */
 			char bufTime[32] = {0}, bufFloat[16] = {0}, buftext[100] = {0};
+			/* Convert float to string */
 			sprintf(bufFloat, "%f ", sensors[i]);
+			/* Store time value once */
 			if(!i) {
 				sprintf(bufTime,"%d:%d:%ld ", min, s, uwTick);
 				strcat(buftext, bufTime);
 			}
+			/* Store sensor names and values within main buffer */
 			strcat(buftext, (char*)text[i]);
 			strcat(buftext, bufFloat);
 
+			/* To prevent large spaces between the different sensor
+			 * values, the non zero characters are counted and manually placed
+			 * within the printing buffer without using strcat.
+			 */
 			for (int j = 0; j < sizeof(buftext); j++) {
 				if (buftext[j] != '\0') count++;
 			}
@@ -346,22 +370,17 @@ void stateOperations(uint16_t min, uint16_t s, uint8_t uflag) {
 		}
 		/* SINGLE READ SENSOR SECTION END */
 
-		/* MAGNET READ SENSOR SECTION */
-		uint8_t text[][3] = {"X: ", "Y: ", "Z: "};
+		/* MAGNET READ SENSOR SECTION
+		 * Magnetometer data stored within character array, as before. */
+		char textmag[][5] = {"X:  \0", "Y:  \0", "Z:  \0"}, tmag[] = {"Magnetometer: "};
+		strcat(buf, tmag);
 		for (int i = 0; i < 3; i++) {
-			char buftext[100] = {"Magnetometer: "}, magBuf[16] = {0};
+			char magBuf[16] = {0};
 			sprintf(magBuf, "%d ", magsens[i]);
-			strcat(buftext, (char*)text[i]);
-			strcat(buftext, magBuf);
-
-			for (int j = 0; j < sizeof(buftext); j++) {
-				if (buftext[j] != '\0') count++;
-			}
-
-			for (int j = lastcnt; j < count; j++) bufmag[j] = buftext[j-lastcnt];
-			lastcnt = count;
+			strcat(buf, textmag[i]);
+			strcat(buf, magBuf);
 		}
-
+		/* MAGNET READ SENSOR SECTION */
 		break;
 	}
 	case STATE_STORING:
@@ -369,22 +388,26 @@ void stateOperations(uint16_t min, uint16_t s, uint8_t uflag) {
 			res = f_write(&MyFile, buf, strlen(buf), (void *)&byteswritten);
 			if((byteswritten == 0) || (res != FR_OK))
 			{
-				/* 'STM32.TXT' file Write or EOF Error */
+				/* file Write or EOF Error */
 				Error_Handler();
 			}
 			res = f_write(&MyFile, "\r\n", 2, (void *)&byteswritten);
 			if((byteswritten == 0) || (res != FR_OK))
 			{
-				/* 'STM32.TXT' file Write or EOF Error */
+				/* file Write or EOF Error */
 				Error_Handler();
 			}
+			/* Close the file and open it again once the appropriate state is reached.
+			 * The reason for this is to ensure that the data that was written is properly
+			 * stored within the file in the case of an unexpected system shutdown.
+			 */
 			f_close(&MyFile);
 		}
-		printf("%s\r\n", buf);
-		printf("%s", bufmag);
+		printf("%s\n", buf);
+		for (int i = 0; i < BUFFER_SIZE; i++) buf[i] = 0;
 		break;
 	case STATE_ERROR:
-		printf("Something bad happened\r\n");
+		printf("Something bad happened\n");
 		break;
 	default:
 		break;

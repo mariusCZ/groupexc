@@ -134,8 +134,8 @@ uint8_t MAGNET_DataCheck(void);
 void MAGNET_LowPower(uint16_t status);
 void MAGNET_ReadXYZ(int16_t* pData);
 
-extern void     MAGNET_Write(uint8_t addr, uint8_t reg, uint8_t val);
-extern uint8_t  MAGNET_Read(uint8_t addr, uint8_t reg);
-extern uint16_t MAGNET_ReadMultiple(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len);
+extern void     SENSOR_IO_Write(uint8_t addr, uint8_t reg, uint8_t val);
+extern uint8_t  SENSOR_IO_Read(uint8_t addr, uint8_t reg);
+extern uint16_t SENSOR_IO_ReadMultiple(uint8_t addr, uint8_t reg, uint8_t *buf, uint16_t len);
 
 #endif /* SRC_MAGDRIVER_H_ */

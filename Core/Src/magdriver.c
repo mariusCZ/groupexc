@@ -10,30 +10,30 @@
 
 void MAGNET_Init(struct Regs regs) {
 	/* Write all the register values */
-	MAGNET_Write(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG1, regs.reg1);
-	MAGNET_Write(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG2, regs.reg2);
-	MAGNET_Write(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG3, regs.reg3);
-	MAGNET_Write(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG4, regs.reg4);
-	MAGNET_Write(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG5, regs.reg5);
+	SENSOR_IO_Write(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG1, regs.reg1);
+	SENSOR_IO_Write(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG2, regs.reg2);
+	SENSOR_IO_Write(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG3, regs.reg3);
+	SENSOR_IO_Write(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG4, regs.reg4);
+	SENSOR_IO_Write(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG5, regs.reg5);
 }
 
 void MAGNET_DeInit(void) {
 	uint8_t ctrl = 0x00;
 
 	/* Read the control register 3 */
-	ctrl = MAGNET_Read(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG3);
+	ctrl = SENSOR_IO_Read(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG3);
 	/* Disable selection mode */
 	ctrl &= ~(LIS3MDL_MAG_SELECTION_MODE);
 	/* Enable powerdown2 mode */
 	ctrl |= LIS3MDL_MAG_POWERDOWN2_MODE;
 	/* Write back to control register 3 */
-	MAGNET_Write(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG3, ctrl);
+	SENSOR_IO_Write(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG3, ctrl);
 }
 
 uint8_t MAGNET_ReadID(void)
 {
   /* Read value at Who am I register address */
-  return (MAGNET_Read(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_WHO_AM_I_REG));
+  return (SENSOR_IO_Read(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_WHO_AM_I_REG));
 }
 
 void MAGNET_MagLowPower(uint16_t status)
@@ -41,7 +41,7 @@ void MAGNET_MagLowPower(uint16_t status)
   uint8_t ctrl = 0;
 
   /* Read control register 1 value */
-  ctrl = MAGNET_Read(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG3);
+  ctrl = SENSOR_IO_Read(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG3);
 
   /* Clear Low Power Mode bit */
   ctrl &= ~(0x20);
@@ -56,14 +56,14 @@ void MAGNET_MagLowPower(uint16_t status)
   }
 
   /* write back control register */
-  MAGNET_Write(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG3, ctrl);
+  SENSOR_IO_Write(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG3, ctrl);
 }
 
 uint8_t MAGNET_DataCheck(void) {
 	uint8_t ctrl = 0;
 
 	/* Read the status register */
-	ctrl = MAGNET_Read(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_STATUS_REG);
+	ctrl = SENSOR_IO_Read(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_STATUS_REG);
 	/* Check if fifth bit is 1, if so return 1 */
 	if (CHECK_BIT(ctrl, 4)) return 1;
 	else return 0;
@@ -78,10 +78,10 @@ void MAGNET_ReadXYZ(int16_t* pData)
   float sensitivity = 0;
 
   /* Read the magnetometer control register content */
-  ctrlm = MAGNET_Read(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG2);
+  ctrlm = SENSOR_IO_Read(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_CTRL_REG2);
 
   /* Read output register X, Y & Z acceleration */
-  MAGNET_ReadMultiple(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_OUTX_L, buffer, 6);
+  SENSOR_IO_ReadMultiple(LIS3MDL_MAG_I2C_ADDRESS_HIGH, LIS3MDL_MAG_OUTX_L, buffer, 6);
 
   for(i=0; i<3; i++)
   {
