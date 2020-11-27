@@ -43,6 +43,9 @@
 /** @defgroup STM32L475E_IOT01_LOW_LEVEL_Exported_Types LOW LEVEL Exported Types
   * @{
   */
+
+I2C_HandleTypeDef hI2cHandler;
+
 typedef enum 
 {
 LED2 = 0,

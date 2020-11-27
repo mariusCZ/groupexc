@@ -80,7 +80,6 @@ const uint16_t COM_TX_AF[COMn] = {DISCOVERY_COM1_TX_AF};
 
 const uint16_t COM_RX_AF[COMn] = {DISCOVERY_COM1_RX_AF};
 
-I2C_HandleTypeDef hI2cHandler;
 UART_HandleTypeDef hDiscoUart;
 
 /**

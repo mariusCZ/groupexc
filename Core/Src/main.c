@@ -17,11 +17,18 @@
   *
   ******************************************************************************
   */
+
+/* TODO: Remove magic numbers
+ * TODO: Add comments
+ */
+
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm_hsensor.h"
 #include "stm_tsensor.h"
 #include "stm_psensor.h"
+#include "magdriver.h"
+#include "i2cdriver.h"
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -100,6 +107,26 @@ int main(void)
 
   /* Enable USB power on Pwrctrl CR2 register */
   HAL_PWREx_EnableVddUSB();
+
+  /* Initialize register values */
+  struct Regs regs;
+  regs.reg1 = LIS3MDL_MAG_TEMPSENSOR_DISABLE | LIS3MDL_MAG_OM_XY_HIGH | LIS3MDL_MAG_ODR_40_HZ;
+  regs.reg2 = LIS3MDL_MAG_FS_4_GA | LIS3MDL_MAG_REBOOT_DEFAULT | LIS3MDL_MAG_SOFT_RESET_DEFAULT;
+  regs.reg3 = LIS3MDL_MAG_CONFIG_NORMAL_MODE | LIS3MDL_MAG_CONTINUOUS_MODE;
+  regs.reg4 = LIS3MDL_MAG_OM_Z_HIGH | LIS3MDL_MAG_BLE_LSB;
+  regs.reg5 = LIS3MDL_MAG_BDU_MSBLSB;
+
+  /* Initialize magnetometer */
+  MAGNET_Init(regs);
+
+  /* Read the magnetometer ID */
+  uint8_t mID = MAGNET_ReadID();
+  /* Check whether the ID is correct */
+  if (mID == 61) printf("ID correct, sensor communications operational.\r\n");
+  else {
+	printf("ID incorrect, sensor communication non-functional.\r\n");
+	while (1) {}
+  }
 
   BSP_HSENSOR_Init();
   BSP_TSENSOR_Init();
@@ -254,9 +281,10 @@ void stateMachine(uint8_t uflag) {
 void stateOperations(uint16_t min, uint16_t s, uint8_t uflag) {
 	static float sensors[3];
 	static uint8_t text[][30] = {"Temperature: ", "Humidity: ", "Pressure: "};
+	static int16_t magsensbuf[20][3], magsens[3];
 	uint32_t byteswritten;
 	FRESULT res;
-	static char buf[200] = {0};
+	static char buf[200] = {0}, bufmag[100] = {0};
 
 	switch (MachineState) {
 	case STATE_IDLE:
@@ -265,9 +293,39 @@ void stateOperations(uint16_t min, uint16_t s, uint8_t uflag) {
 		sensors[0] = BSP_TSENSOR_ReadTemp();
 		sensors[1] = BSP_HSENSOR_ReadHumidity();
 		sensors[2] = BSP_PSENSOR_ReadPressure();
+		uint8_t magCnt = 0;
+		while (magCnt <= 20) {
+			if (MAGNET_DataCheck()) {
+				  /* Read the data */
+				  //if (magINT) printf("Interrupt and data check synchronous \r\n");
+				  MAGNET_ReadXYZ(magsensbuf[magCnt]);
+				  magCnt++;
+			}
+		}
 		break;
 	case STATE_DATAMANAGE:
 	{
+		/* WEIGHTED AVERAGE SECTION */
+		uint8_t weights[20][3] = {{1}};
+		for (int i = 0; i < 3; i++) {
+			for (int j = 0; j < 20; j++) {
+				for (int k = 0; k < 20; k++){
+					if (magsensbuf[j][i] == magsensbuf[k][i]) weights[j][i] += 1;
+				}
+			}
+		}
+
+		for (int i = 0; i < 3; i++) {
+			int16_t average = 0;
+			for (int j = 0; j < 20; j++) {
+				average += magsensbuf[j][i] * weights[j][i];
+			}
+			average = average / 20;
+			magsens[i] = average;
+		}
+		/* WEIGHTED AVERAGE SECTION END */
+
+		/* SINGLE READ SENSOR SECTION */
 		uint8_t count = 0, lastcnt = 0;
 		for (int i = 0; i < 3; i++) {
 			char bufTime[32] = {0}, bufFloat[16] = {0}, buftext[100] = {0};
@@ -286,6 +344,24 @@ void stateOperations(uint16_t min, uint16_t s, uint8_t uflag) {
 			for (int j = lastcnt; j < count; j++) buf[j] = buftext[j-lastcnt];
 			lastcnt = count;
 		}
+		/* SINGLE READ SENSOR SECTION END */
+
+		/* MAGNET READ SENSOR SECTION */
+		uint8_t text[][3] = {"X: ", "Y: ", "Z: "};
+		for (int i = 0; i < 3; i++) {
+			char buftext[100] = {"Magnetometer: "}, magBuf[16] = {0};
+			sprintf(magBuf, "%d ", magsens[i]);
+			strcat(buftext, (char*)text[i]);
+			strcat(buftext, magBuf);
+
+			for (int j = 0; j < sizeof(buftext); j++) {
+				if (buftext[j] != '\0') count++;
+			}
+
+			for (int j = lastcnt; j < count; j++) bufmag[j] = buftext[j-lastcnt];
+			lastcnt = count;
+		}
+
 		break;
 	}
 	case STATE_STORING:
@@ -304,7 +380,8 @@ void stateOperations(uint16_t min, uint16_t s, uint8_t uflag) {
 			}
 			f_close(&MyFile);
 		}
-		printf("%s", buf);
+		printf("%s\r\n", buf);
+		printf("%s", bufmag);
 		break;
 	case STATE_ERROR:
 		printf("Something bad happened\r\n");
