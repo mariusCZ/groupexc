@@ -105,9 +105,16 @@ int main(void)
   BSP_TSENSOR_Init();
   BSP_PSENSOR_Init();
 
+  uint8_t c = 0;
+  if (ENABLE_WITHOUT_USB) {
+	  printf("Press y if you would like to run without USB\r\n");
+	  HAL_UART_Receive(&UartHandle, (uint8_t *)&c, 1, 0xFFFF);
+	  if (c == 'y' || c == 'Y')
+		  while(1) {stateMachine(0);}
+  }
+
   if(USBinit() == 0)
   {
-
     while (1)
     {
       /* USB Host Background task */
@@ -117,7 +124,7 @@ int main(void)
       switch(Appli_state)
       {
       case APPLICATION_START:
-        stateMachine();
+        stateMachine(1);
         Appli_state = APPLICATION_IDLE;
         break;
 
@@ -148,29 +155,31 @@ uint8_t USBinit() {
 	return ret;
 }
 
-void stateMachine() {
+void stateMachine(uint8_t uflag) {
 	static uint16_t s = 0, min = 0;
 	static uint8_t input = 0;
 	if (input) s++;
 	if (s >= 60) min++;
 	const char filename[] = "datalog.txt";
 
-	printf("Starting write\r\n");
-	/* Register the file system object to the FatFs module */
-	if(f_mount(&USBDISKFatFs, (TCHAR const*)USBDISKPath, 0) != FR_OK)
-	{
-		/* FatFs Initialization Error */
-		Error_Handler();
-	}
-	else
-	{
-		/* Create and Open a new text file object with write access */
-		if(f_open(&MyFile, filename, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+	if (uflag) {
+		printf("Starting write\r\n");
+		/* Register the file system object to the FatFs module */
+		if(f_mount(&USBDISKFatFs, (TCHAR const*)USBDISKPath, 0) != FR_OK)
 		{
-		  /* 'STM32.TXT' file Open for write Error */
-		  Error_Handler();
+			/* FatFs Initialization Error */
+			Error_Handler();
 		}
-		f_close(&MyFile);
+		else
+		{
+			/* Create and Open a new text file object with write access */
+			if(f_open(&MyFile, filename, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+			{
+			  /* 'STM32.TXT' file Open for write Error */
+			  Error_Handler();
+			}
+			f_close(&MyFile);
+		}
 	}
 
 	while(1) {
@@ -191,20 +200,22 @@ void stateMachine() {
 				MachineState = STATE_READING;
 				printf("Moving from idle \r\n");
 			}
-			else stateOperations(0,0);
+			else stateOperations(0,0,uflag);
 			break;
 
 		case STATE_READING:
 			printf("Reading state\r\n");
 			input = 0;
-			if(f_open(&MyFile, filename, FA_OPEN_APPEND | FA_WRITE) != FR_OK)
-			{
-				/* 'STM32.TXT' file Open for write Error */
-				Error_Handler();
+			if(uflag) {
+				if(f_open(&MyFile, filename, FA_OPEN_APPEND | FA_WRITE) != FR_OK)
+				{
+					/* 'STM32.TXT' file Open for write Error */
+					Error_Handler();
+				}
 			}
 			if (input) MachineState = STATE_IDLE;
 			else {
-				stateOperations(0,0);
+				stateOperations(0,0,uflag);
 				MachineState = STATE_DATAMANAGE;
 			}
 			break;
@@ -213,21 +224,21 @@ void stateMachine() {
 			printf("Data state\r\n");
 			if (input) MachineState = STATE_ERROR;
 			else {
-				stateOperations(min,s);
+				stateOperations(min,s,uflag);
 				MachineState = STATE_STORING;
 			}
 			break;
 
 		case STATE_STORING:
 			printf("Storing state\r\n");
-			stateOperations(0,0);
+			stateOperations(0,0,uflag);
 			if (input) MachineState = STATE_READING;
 			else MachineState = STATE_IDLE;
 			break;
 
 		case STATE_ERROR:
 			printf("Error state\r\n");
-			stateOperations(0,0);
+			stateOperations(0,0,uflag);
 			if (!input) MachineState = STATE_STORING;
 			break;
 
@@ -240,7 +251,7 @@ void stateMachine() {
 	FATFS_UnLinkDriver(USBDISKPath);
 }
 
-void stateOperations(uint16_t min, uint16_t s) {
+void stateOperations(uint16_t min, uint16_t s, uint8_t uflag) {
 	static float sensors[3];
 	static uint8_t text[][30] = {"Temperature: ", "Humidity: ", "Pressure: "};
 	uint32_t byteswritten;
@@ -278,21 +289,22 @@ void stateOperations(uint16_t min, uint16_t s) {
 		break;
 	}
 	case STATE_STORING:
-		res = f_write(&MyFile, buf, strlen(buf), (void *)&byteswritten);
+		if (uflag) {
+			res = f_write(&MyFile, buf, strlen(buf), (void *)&byteswritten);
+			if((byteswritten == 0) || (res != FR_OK))
+			{
+				/* 'STM32.TXT' file Write or EOF Error */
+				Error_Handler();
+			}
+			res = f_write(&MyFile, "\r\n", 2, (void *)&byteswritten);
+			if((byteswritten == 0) || (res != FR_OK))
+			{
+				/* 'STM32.TXT' file Write or EOF Error */
+				Error_Handler();
+			}
+			f_close(&MyFile);
+		}
 		printf("%s", buf);
-		if((byteswritten == 0) || (res != FR_OK))
-		{
-		/* 'STM32.TXT' file Write or EOF Error */
-		Error_Handler();
-		}
-		else printf("data written\r\n");
-		res = f_write(&MyFile, "\r\n", 2, (void *)&byteswritten);
-		if((byteswritten == 0) || (res != FR_OK))
-		{
-		/* 'STM32.TXT' file Write or EOF Error */
-		Error_Handler();
-		}
-		f_close(&MyFile);
 		break;
 	case STATE_ERROR:
 		printf("Something bad happened\r\n");

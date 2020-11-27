@@ -56,8 +56,10 @@ extern FATFS USBH_fatfs;
 #define USARTx_RX_GPIO_PORT              GPIOB
 #define USARTx_RX_AF                     GPIO_AF7_USART1
 
-void stateOperations(uint16_t min, uint16_t s);
-void stateMachine(void);
+#define ENABLE_WITHOUT_USB 				 1
+
+void stateOperations(uint16_t min, uint16_t s, uint8_t uflag);
+void stateMachine(uint8_t uflag);
 uint8_t USBinit(void);
 
 typedef enum {
