@@ -6,7 +6,6 @@
  */
 
 #include "magdriver.h"
-#include "main.h"
 
 void MAGNET_Init(struct Regs regs) {
 	/* Write all the register values */

@@ -58,8 +58,6 @@ extern FATFS USBH_fatfs;
 
 #define ENABLE_WITHOUT_USB 				 1
 
-void stateOperations(uint16_t min, uint16_t s, uint8_t uflag);
-void stateMachine(uint8_t uflag);
 uint8_t USBinit(void);
 
 /* USB state machine enum */
@@ -69,14 +67,6 @@ typedef enum {
   APPLICATION_RUNNING,
 }MSC_ApplicationTypeDef;
 
-/* Project state machine enum */
-typedef enum {
-	STATE_IDLE = 0,
-	STATE_READING,
-	STATE_DATAMANAGE,
-	STATE_STORING,
-	STATE_ERROR,
-}Moore_TypeDef;
 
 #ifdef __cplusplus
 }

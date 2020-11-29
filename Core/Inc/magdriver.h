@@ -9,7 +9,6 @@
 #define SRC_MAGDRIVER_H_
 
 #include "stm32l4xx_hal.h"
-#include "main.h"
 
 #define LIS3MDL_MAG_I2C_ADDRESS_LOW    ((uint8_t)0x38)  // SAD[0] = 0
 #define LIS3MDL_MAG_I2C_ADDRESS_HIGH   ((uint8_t)0x3C)  // SAD[0] = 1
