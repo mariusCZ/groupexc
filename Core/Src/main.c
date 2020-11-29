@@ -28,11 +28,13 @@
 #include "stm_tsensor.h"
 #include "stm_psensor.h"
 #include "magdriver.h"
+#include "lsm6dsl_accel.h"
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
 #define READCNT 10
 #define BUFFER_SIZE 300
+#define ACC_SPEED 25 /* In how many ms a reading will be done for accelerometer */
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
 FATFS USBDISKFatFs;           /* File system object for USB disk logical drive */
@@ -57,8 +59,6 @@ static void SystemClock_Config(void);
 static void Error_Handler(void);
 static void USBH_UserProcess(USBH_HandleTypeDef *phost, uint8_t id);
 /* Private functions ---------------------------------------------------------*/
-
-volatile uint32_t ticks;
 
 /**
   * @brief  Main program
@@ -129,6 +129,15 @@ int main(void)
 	while (1) {}
   }
 
+  /* Initialize Accelerometer */
+  lsm6dsl_accel_init();
+  /* Check whether the ID is correct */
+  if(lsm6dsl_accel_read_id() == 106) printf("Accelerometer ID correct \n");
+  else {
+	  printf("Accelerometer ID incorrect, sensor communication non-functional.\n");
+	  while (1) {}
+  }
+
   /* Intialize the workspace sensors */
   BSP_HSENSOR_Init();
   BSP_TSENSOR_Init();
@@ -190,11 +199,11 @@ uint8_t USBinit() {
 }
 
 void stateMachine(uint8_t uflag) {
-	static uint16_t s = 0, min = 0;
+	static uint16_t s = 0, min = 0, lastuw = 0;
 	/* The state machine's input */
 	static uint8_t input = 0;
 	/* File name where data will be stored */
-	const char filename[] = "datalog.txt";
+	const char filename1[] = "datalog.txt", filename2[] = "accel.txt";
 
 	/* If running with USB OTG, mount file system and create file */
 	if (uflag) {
@@ -207,7 +216,15 @@ void stateMachine(uint8_t uflag) {
 		else
 		{
 			/* Create and Open a new text file object with write access */
-			if(f_open(&MyFile, filename, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+			if(f_open(&MyFile, filename1, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+			{
+			  /* file Open for write Error */
+			  Error_Handler();
+			}
+			/* Close file */
+			f_close(&MyFile);
+			/* Create and Open a new text file object with write access */
+			if(f_open(&MyFile, filename2, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
 			{
 			  /* file Open for write Error */
 			  Error_Handler();
@@ -240,7 +257,19 @@ void stateMachine(uint8_t uflag) {
 			if (input) {
 				MachineState = STATE_READING;
 			}
-			else stateOperations(0,0,uflag);
+			else {
+				if((uwTick - lastuw) >= ACC_SPEED) {
+					lastuw = uwTick;
+					if(uflag) {
+						if(f_open(&MyFile, filename2, FA_OPEN_APPEND | FA_WRITE) != FR_OK)
+						{
+							/* file Open for write Error */
+							Error_Handler();
+						}
+					}
+					stateOperations(min,s,uflag);
+				}
+			}
 			break;
 
 		case STATE_READING:
@@ -248,7 +277,7 @@ void stateMachine(uint8_t uflag) {
 			input = 0;
 			/* If working with USB OTG, open the file for appending */
 			if(uflag) {
-				if(f_open(&MyFile, filename, FA_OPEN_APPEND | FA_WRITE) != FR_OK)
+				if(f_open(&MyFile, filename1, FA_OPEN_APPEND | FA_WRITE) != FR_OK)
 				{
 					/* file Open for write Error */
 					Error_Handler();
@@ -288,7 +317,7 @@ void stateMachine(uint8_t uflag) {
 			break;
 		}
 	}
-	printf("Done writing\r\n");
+	printf("Done writing\n");
 	/* Unlink the USB disk I/O driver once state machine is done */
 	FATFS_UnLinkDriver(USBDISKPath);
 }
@@ -297,17 +326,70 @@ void stateMachine(uint8_t uflag) {
 void stateOperations(uint16_t min, uint16_t s, uint8_t uflag) {
 	/* This function is a supplement of the state machine, since this is where
 	 * all the operations that are done in the different states are stored.
-	 */
+	*/
+	/* Variables for general state machine operation */
 	static float sensors[3];
 	static uint8_t text[][30] = {"Temperature: ", "Humidity: ", "Pressure: "};
 	static int16_t magsensbuf[READCNT][3], magsens[3];
 	uint32_t byteswritten;
 	FRESULT res;
 	static char buf[BUFFER_SIZE] = {0};
+	/* Variables for accelerometer, including its moving average */
+	static uint8_t readIndex = 0;
+	static int16_t readings[READCNT][3] = {{0}}, average[3] = {0}, total[3] = {0};
 
 	/* State machine switch */
 	switch (MachineState) {
 	case STATE_IDLE:
+		/* MOVING AVERAGE SECTION */
+		/* This section applies a moving average to the accelerometer's
+		 * data, since it can be quite noisy due to detecting any type of
+		 * vibration.
+		 */
+		for (int i = 0; i < 3; i++) {
+			total[i] = total[i] - readings[readIndex][i];
+			if(i == 2) {
+				if(lsm6dsl_accel_datacheck())
+					lsm6dsl_accel_readxyz(readings[readIndex]);
+			}
+		}
+		for (int i = 0; i < 3; i++) {
+			total[i] = total[i] + readings[readIndex][i];
+			average[i] = total[i] / READCNT;
+		}
+		readIndex++;
+		if (readIndex >= READCNT) readIndex = 0;
+		/* MOVING AVERAGE SECTION END */
+		/* ACCELEROMETER STORE SECTION */
+		char accbuf[BUFFER_SIZE] = {0};
+		char textmag[][5] = {"X:  \0", "Y:  \0", "Z:  \0"}, tmag[] = {"Accelerometer: "}, bufTime[32] = {0};
+		sprintf(bufTime,"%d:%d:%ld ", min, s, uwTick);
+		strcat(accbuf, bufTime);
+		strcat(accbuf, tmag);
+		for (int i = 0; i < 3; i++) {
+			char numBuf[16] = {0};
+			sprintf(numBuf, "%d ", average[i]);
+			strcat(accbuf, textmag[i]);
+			strcat(accbuf, numBuf);
+		}
+		printf("%s\n", accbuf);
+
+		if (uflag) {
+			res = f_write(&MyFile, accbuf, strlen(accbuf), (void *)&byteswritten);
+			if((byteswritten == 0) || (res != FR_OK))
+			{
+				/* file Write or EOF Error */
+				Error_Handler();
+			}
+			res = f_write(&MyFile, "\r\n", 2, (void *)&byteswritten);
+			if((byteswritten == 0) || (res != FR_OK))
+			{
+				/* file Write or EOF Error */
+				Error_Handler();
+			}
+			f_close(&MyFile);
+		}
+		/* ACCELEROMETER STORE SECTION END */
 		break;
 	case STATE_READING:
 		/* Read the three workspace sensors */
