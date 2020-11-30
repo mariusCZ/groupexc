@@ -121,7 +121,6 @@ void stateMachine(uint8_t uflag) {
 			break;
 		}
 	}
-	printf("Done writing\n");
 	/* Unlink the USB disk I/O driver once state machine is done */
 	FATFS_UnLinkDriver(USBDISKPath);
 }

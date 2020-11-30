@@ -147,9 +147,12 @@ int main(void)
   if (ENABLE_WITHOUT_USB) {
 	  printf("Press y if you would like to run without USB\n");
 	  HAL_UART_Receive(&UartHandle, (uint8_t *)&c, 1, 0xFFFF);
-	  if (c == 'y' || c == 'Y')
+	  if (c == 'y' || c == 'Y') {
 		  /* Run state machine without USB OTG */
-		  while(1) {stateMachine(0);}
+		  stateMachine(0);
+		  printf("State machine done\n");
+		  while(1) {}
+	  }
   }
 
   /* Initialize the USB and run the USB state machine */
@@ -166,6 +169,7 @@ int main(void)
       case APPLICATION_START:
     	/* Start state machine with USB OTG */
         stateMachine(1);
+        printf("State machine done\n");
         Appli_state = APPLICATION_IDLE;
         break;
 
