@@ -3,9 +3,9 @@
 static void Error_Handler(void);
 
 void stateMachine(uint8_t uflag) {
-	static uint16_t s = 0, min = 0, lastuw = 0;
+	uint16_t s = 0, min = 0, lastuw = 0;
 	/* The state machine's input */
-	static uint8_t input = 0;
+	uint8_t input = 0;
 	/* File name where data will be stored */
 	const char filename1[] = "datalog.txt", filename2[] = "accel.txt";
 
@@ -62,8 +62,11 @@ void stateMachine(uint8_t uflag) {
 				MachineState = STATE_READING;
 			}
 			else {
+				/* Check if accelerometer read time passed */
 				if((uwTick - lastuw) >= ACC_SPEED) {
+					/* Reset timer */
 					lastuw = uwTick;
+					/* Open accelerometer file if OTG used */
 					if(uflag) {
 						if(f_open(&MyFile, filename2, FA_OPEN_APPEND | FA_WRITE) != FR_OK)
 						{
@@ -79,16 +82,16 @@ void stateMachine(uint8_t uflag) {
 		case STATE_READING:
 			printf("Reading state\n");
 			input = 0;
-			/* If working with USB OTG, open the file for appending */
-			if(uflag) {
-				if(f_open(&MyFile, filename1, FA_OPEN_APPEND | FA_WRITE) != FR_OK)
-				{
-					/* file Open for write Error */
-					Error_Handler();
-				}
-			}
 			if (input) MachineState = STATE_IDLE;
 			else {
+				/* If working with USB OTG, open the file for appending */
+				if(uflag) {
+					if(f_open(&MyFile, filename1, FA_OPEN_APPEND | FA_WRITE) != FR_OK)
+					{
+						/* file Open for write Error */
+						Error_Handler();
+					}
+				}
 				stateOperations(0,0,uflag);
 				MachineState = STATE_DATAMANAGE;
 			}
@@ -150,12 +153,15 @@ void stateOperations(uint16_t min, uint16_t s, uint8_t uflag) {
 		 * vibration.
 		 */
 		for (int i = 0; i < 3; i++) {
+			/* Subtracting last readings from the total */
 			total[i] = total[i] - readings[readIndex][i];
+			/* Obtaining new readings */
 			if(i == 2) {
 				if(lsm6dsl_accel_datacheck())
 					lsm6dsl_accel_readxyz(readings[readIndex]);
 			}
 		}
+		/* Adding new readings to total and calculating average */
 		for (int i = 0; i < 3; i++) {
 			total[i] = total[i] + readings[readIndex][i];
 			average[i] = total[i] / READCNT;
@@ -166,17 +172,21 @@ void stateOperations(uint16_t min, uint16_t s, uint8_t uflag) {
 		/* ACCELEROMETER STORE SECTION */
 		char accbuf[BUFFER_SIZE] = {0};
 		char textmag[][5] = {"X:  \0", "Y:  \0", "Z:  \0"}, tmag[] = {"Accelerometer: "}, bufTime[32] = {0};
+		/* Convert time variables to char array */
 		sprintf(bufTime,"%d:%d:%ld ", min, s, uwTick);
+		/* Concatenate time and preset text */
 		strcat(accbuf, bufTime);
 		strcat(accbuf, tmag);
 		for (int i = 0; i < 3; i++) {
 			char numBuf[16] = {0};
+			/* Convert readings to char array and concatenate to buffer */
 			sprintf(numBuf, "%d ", average[i]);
 			strcat(accbuf, textmag[i]);
 			strcat(accbuf, numBuf);
 		}
 		printf("%s\n", accbuf);
 
+		/* Write to file if USB OTG used */
 		if (uflag) {
 			res = f_write(&MyFile, accbuf, strlen(accbuf), (void *)&byteswritten);
 			if((byteswritten == 0) || (res != FR_OK))

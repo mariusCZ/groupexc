@@ -21,8 +21,8 @@
 #include "magdriver.h"
 #include "lsm6dsl_accel.h"
 
-#define READCNT 10
-#define BUFFER_SIZE 300
+#define READCNT 10 /* Sensor read count for averaging */
+#define BUFFER_SIZE 300 /* Buffer size for storage functions */
 #define ACC_SPEED 25 /* In how many ms a reading will be done for accelerometer */
 
 void stateOperations(uint16_t min, uint16_t s, uint8_t uflag);
@@ -40,7 +40,7 @@ typedef enum {
 extern FATFS USBDISKFatFs;           /* File system object for USB disk logical drive */
 extern FIL MyFile;                   /* File object */
 extern char USBDISKPath[4];          /* USB Host logical drive path */
-extern USBH_HandleTypeDef hUSBHost; /* USB Host handle */
-extern Moore_TypeDef MachineState;
+extern USBH_HandleTypeDef hUSBHost;  /* USB Host handle */
+extern Moore_TypeDef MachineState;	 /* To obtain initial machine state */
 
 #endif /* INC_MOORE_H_ */

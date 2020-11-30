@@ -141,10 +141,10 @@ int main(void)
   BSP_TSENSOR_Init();
   BSP_PSENSOR_Init();
 
-  /* Check if program used with or without USB OTG */
-  /* This is only available if ENABLE_WITHOUT_USB is set to 1 in main.h */
-  uint8_t c = 0;
-  if (ENABLE_WITHOUT_USB) {
+	/* Check if program used with or without USB OTG */
+	/* This is only available if ENABLE_WITHOUT_USB is set to 1 in main.h */
+	uint8_t c = 0;
+	if (ENABLE_WITHOUT_USB) {
 	  printf("Press y if you would like to run without USB\n");
 	  HAL_UART_Receive(&UartHandle, (uint8_t *)&c, 1, 0xFFFF);
 	  if (c == 'y' || c == 'Y') {
@@ -153,7 +153,7 @@ int main(void)
 		  printf("State machine done\n");
 		  while(1) {}
 	  }
-  }
+	}
 
   /* Initialize the USB and run the USB state machine */
   if(USBinit() == 0)
